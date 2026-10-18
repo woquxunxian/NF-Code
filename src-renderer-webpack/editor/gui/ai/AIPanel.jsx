@@ -2,16 +2,17 @@
  * The AI assistant panel.
  *
  * This is presentation and interaction only: it does not talk to any model, speech
- * recognition, or the project. The voice messages are placeholders and the "thinking"
- * delay is simulated so the states can be reviewed.
+ * recognition, or the project. Voice messages are placeholders, the thinking delay is
+ * simulated, and uploaded images stay local to the renderer.
  *
  * The panel has two placements:
- *  - rail: docked on the right edge of the window, with the editor body leaving room for it
- *  - floating: a card over the bottom right corner of stage
+ *  - rail: docked on the right edge of the window; its left edge can be dragged to resize
+ *    it, and the editor body leaves room for it
+ *  - floating: a card over the stage that can be dragged by long-pressing a blank area
  *
- * While docked it keeps an eye on the window width and asks the GUI to switch to its small
- * stage when the editor would otherwise not have room for the panel. The previous stage
- * size is restored when the panel floats again.
+ * While docked it keeps an eye on how much room is left and asks the GUI to switch to its
+ * small stage when the large stage would no longer fit. The previous stage size is restored
+ * when the panel floats again.
  */
 
 import React from 'react';
@@ -20,10 +21,20 @@ import {STAGE_SIZE_MODES} from 'scratch-gui/src/lib/layout-constants';
 import Icon from './icons.jsx';
 import styles from './AIPanel.css';
 
-// Below this window width the editor needs the small stage to fit next to the rail.
-const SHRINK_BELOW = 1500;
+const DEFAULT_RAIL_WIDTH = 248;
+const MIN_RAIL_WIDTH = 236;
+const MAX_RAIL_WIDTH = 420;
+// Keep this much editor width free when the rail is at its widest: palette, small stage and
+// a usable workspace.
+const MIN_BODY_FOR_SMALL_STAGE = 900;
+// Below this much editor width the large stage no longer fits next to the rail.
+const LARGE_LAYOUT_MIN = 1252;
 // Floating card width; the height comes from its content.
 const FLOATING_WIDTH = 300;
+// Distance the pointer has to travel before a press on the top strip becomes a drag. Small
+// enough that dragging starts as soon as the mouse moves, large enough that a click on a
+// tab or the switch button still counts as a click.
+const DRAG_START_DISTANCE = 4;
 
 const VOICE_MESSAGES = [
   {role: 'user', duration: '0:06'},
@@ -68,29 +79,71 @@ class AIPanel extends React.Component {
       textState: 'idle',
       input: '',
       textMessages: INITIAL_TEXT_MESSAGES,
+      voiceImages: [],
+      attachment: null,
       adopted: false,
       playing: false,
+      railWidth: DEFAULT_RAIL_WIDTH,
+      dragging: false,
       floatingLeft: null,
       floatingBottom: null
     };
 
+    this.panelRef = React.createRef();
+    this.bodyRef = React.createRef();
+    this.fileInputRef = React.createRef();
+
     /** Stage size the user had before the rail asked for the small stage. */
     this.previousStageSize = null;
     this.autoShrunk = false;
+    this.customFloatingPosition = false;
     this.stageObserver = null;
     this.replyTimer = null;
     this.textTimer = null;
     this.resizeTimer = null;
     this.positionFrame = null;
+    this.dragStart = null;
+    this.dragActive = false;
+    this.dragMoved = false;
+    this.dragStartedInTabs = false;
+    this.dragStartedOnSwitch = false;
+    this.suppressNextClick = false;
+    this.objectUrls = [];
   }
 
   componentDidMount () {
-    this.updateRailClass();
-    this.evaluateStageSize();
+    const width = this.clampRailWidth(this.state.railWidth);
+    if (width !== this.state.railWidth) {
+      this.setState({railWidth: width});
+    }
+    this.applyRailWidth(width);
+    if (!this.props.hidden) {
+      this.updateRailClass();
+      this.evaluateStageSize(width);
+    }
     window.addEventListener('resize', this.handleWindowResize);
   }
 
   componentDidUpdate (prevProps, prevState) {
+    if (prevProps.hidden !== this.props.hidden) {
+      if (this.props.hidden) {
+        document.documentElement.classList.remove('tw-ai-rail-open');
+        this.unobserveStage();
+      } else {
+        this.updateRailClass();
+        if (this.state.mode === 'rail') {
+          this.evaluateStageSize();
+        } else {
+          this.scheduleFloatingPosition();
+          this.observeStage();
+        }
+      }
+    }
+
+    if (prevState.railWidth !== this.state.railWidth) {
+      this.applyRailWidth();
+    }
+
     if (prevState.mode !== this.state.mode) {
       this.updateRailClass();
       if (this.state.mode === 'rail') {
@@ -120,36 +173,60 @@ class AIPanel extends React.Component {
 
   componentWillUnmount () {
     document.documentElement.classList.remove('tw-ai-rail-open');
+    document.documentElement.classList.remove('tw-ai-dragging');
+    document.documentElement.classList.remove('tw-ai-resizing');
     window.removeEventListener('resize', this.handleWindowResize);
-    window.removeEventListener('pointerup', this.finishListening);
+    window.removeEventListener('pointermove', this.handleDragMove, true);
+    window.removeEventListener('pointerup', this.finishDrag, true);
+    window.removeEventListener('pointercancel', this.finishDrag, true);
     this.unobserveStage();
     this.clearTimers();
     if (this.positionFrame) {
       cancelAnimationFrame(this.positionFrame);
     }
+    this.objectUrls.forEach((url) => URL.revokeObjectURL(url));
+    this.objectUrls = [];
     if (this.autoShrunk) {
       this.autoShrunk = false;
       this.props.onSetStageSize(this.previousStageSize || STAGE_SIZE_MODES.large);
     }
   }
 
+  getMaxRailWidth = () => Math.max(
+    MIN_RAIL_WIDTH,
+    Math.min(MAX_RAIL_WIDTH, window.innerWidth - MIN_BODY_FOR_SMALL_STAGE)
+  );
+
+  clampRailWidth = (width) => Math.max(
+    MIN_RAIL_WIDTH,
+    Math.min(this.getMaxRailWidth(), Math.round(width))
+  );
+
+  applyRailWidth = (width = this.state.railWidth) => {
+    document.documentElement.style.setProperty('--tw-ai-rail-width', `${width}px`);
+  };
+
   /**
    * The editor body leaves room for the rail. The rule lives in gui.css because it has to
    * target a scratch-gui class.
    */
   updateRailClass = () => {
-    document.documentElement.classList.toggle('tw-ai-rail-open', this.state.mode === 'rail');
+    const railOpen = this.state.mode === 'rail' && !this.props.hidden;
+    document.documentElement.classList.toggle('tw-ai-rail-open', railOpen);
   };
 
   /**
    * Keep the current stage size when it fits; otherwise switch to the editor's small stage.
+   * The available width depends on the current rail width, so resizing the rail re-runs this.
+   * @param {number} railWidth
    */
-  evaluateStageSize = () => {
-    if (this.state.mode !== 'rail') {
+  evaluateStageSize = (railWidth = this.state.railWidth) => {
+    if (this.state.mode !== 'rail' || this.props.hidden) {
       return;
     }
 
-    const tooNarrow = window.innerWidth < SHRINK_BELOW;
+    const available = window.innerWidth - railWidth;
+    const tooNarrow = available < LARGE_LAYOUT_MIN;
     if (tooNarrow) {
       if (this.props.stageSizeMode !== STAGE_SIZE_MODES.small) {
         if (!this.autoShrunk) {
@@ -170,8 +247,12 @@ class AIPanel extends React.Component {
     }
     this.resizeTimer = setTimeout(() => {
       this.resizeTimer = null;
+      const clamped = this.clampRailWidth(this.state.railWidth);
+      if (clamped !== this.state.railWidth) {
+        this.setState({railWidth: clamped});
+      }
       if (this.state.mode === 'rail') {
-        this.evaluateStageSize();
+        this.evaluateStageSize(clamped);
       } else {
         this.scheduleFloatingPosition();
       }
@@ -198,6 +279,9 @@ class AIPanel extends React.Component {
   getStageElement = () => document.querySelector("[class*='stage-wrapper_stage-wrapper_']");
 
   scheduleFloatingPosition = () => {
+    if (this.props.hidden) {
+      return;
+    }
     if (this.positionFrame) {
       cancelAnimationFrame(this.positionFrame);
     }
@@ -209,10 +293,11 @@ class AIPanel extends React.Component {
 
   /**
    * Puts the floating card over the bottom right corner of the stage, measured from the
-   * live stage element so it follows stage size changes and window resizing.
+   * live stage element so it follows stage size changes and window resizing. Once the user
+   * has dragged the card, its position is left alone.
    */
   positionFloating = () => {
-    if (this.state.mode !== 'floating') {
+    if (this.state.mode !== 'floating' || this.customFloatingPosition) {
       return;
     }
     const stage = this.getStageElement();
@@ -220,11 +305,16 @@ class AIPanel extends React.Component {
       return;
     }
     const rect = stage.getBoundingClientRect();
+    const panel = this.panelRef.current;
+    const height = panel ? panel.offsetHeight : 300;
     const left = Math.max(12, Math.min(
       window.innerWidth - FLOATING_WIDTH - 12,
       rect.right - FLOATING_WIDTH - 12
     ));
-    const bottom = Math.max(12, window.innerHeight - rect.bottom + 12);
+    const bottom = Math.max(8, Math.min(
+      window.innerHeight - height - 8,
+      window.innerHeight - rect.bottom + 12
+    ));
     if (left !== this.state.floatingLeft || bottom !== this.state.floatingBottom) {
       this.setState({
         floatingLeft: left,
@@ -234,17 +324,28 @@ class AIPanel extends React.Component {
   };
 
   switchPlacement = () => {
-    this.setState({
-      mode: this.state.mode === 'rail' ? 'floating' : 'rail'
-    });
+    // A switch button long-press dragged the card; do not also change placement on release.
+    if (this.suppressNextClick) {
+      this.suppressNextClick = false;
+      return;
+    }
+    const next = this.state.mode === 'rail' ? 'floating' : 'rail';
+    if (next === 'floating') {
+      this.customFloatingPosition = false;
+    }
+    this.setState({mode: next});
   };
 
   switchTab = (tab) => {
+    // A tab was long-pressed to drag the card; do not also switch tabs on release.
+    if (this.suppressNextClick) {
+      this.suppressNextClick = false;
+      return;
+    }
     if (tab === this.state.tab) {
       return;
     }
     this.clearVoiceTimers();
-    window.removeEventListener('pointerup', this.finishListening);
     this.setState({
       tab,
       voiceState: 'idle'
@@ -270,93 +371,40 @@ class AIPanel extends React.Component {
     }
   };
 
-  startListening = (event) => {
-    if (event) {
-      event.preventDefault();
-      if (typeof event.button === 'number' && event.button !== 0) {
-        return;
-      }
-    }
-    if (this.state.voiceState === 'listening') {
-      return;
-    }
+  startListening = () => {
     this.clearVoiceTimers();
-    this.setState({voiceState: 'listening'});
-    window.addEventListener('pointerup', this.finishListening, {once: true});
+    this.setState({
+      voiceState: 'listening',
+      playing: false
+    });
   };
 
+  /**
+   * Ends the recording, attaches an image if one is staged, then simulates the reply.
+   */
   finishListening = () => {
-    window.removeEventListener('pointerup', this.finishListening);
     if (this.state.voiceState !== 'listening') {
       return;
     }
-    this.setState({voiceState: 'thinking'});
+    const image = this.state.attachment ? this.state.attachment.url : null;
+    this.setState((state) => ({
+      voiceState: 'thinking',
+      attachment: null,
+      voiceImages: image ? [...state.voiceImages, image] : state.voiceImages
+    }));
     this.replyTimer = setTimeout(() => {
       this.replyTimer = null;
       this.setState({voiceState: 'reply'});
     }, 1300);
   };
 
-  handleMicKeyDown = (event) => {
-    if (event.key === ' ' || event.key === 'Enter') {
-      event.preventDefault();
+  toggleListening = () => {
+    if (this.state.voiceState === 'listening') {
+      this.finishListening();
+    } else {
       this.startListening();
     }
   };
-
-  handleMicKeyUp = (event) => {
-    if (event.key === ' ' || event.key === 'Enter') {
-      event.preventDefault();
-      this.finishListening();
-    }
-  };
-
-  handleInputChange = (event) => {
-    this.setState({input: event.target.value});
-  };
-
-  handleInputKeyDown = (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      this.sendText();
-    }
-  };
-
-  sendText = () => {
-    const text = this.state.input.trim();
-    if (!text) {
-      return;
-    }
-    if (this.textTimer) {
-      clearTimeout(this.textTimer);
-      this.textTimer = null;
-    }
-    this.setState((state) => ({
-      input: '',
-      textState: 'thinking',
-      textMessages: [...state.textMessages, {role: 'user', text}]
-    }));
-    this.textTimer = setTimeout(() => {
-      this.textTimer = null;
-      this.setState((state) => ({
-        textState: 'reply',
-        textMessages: [...state.textMessages, {
-          role: 'ai',
-          text: '收到，我按这个方向继续。'
-        }]
-      }));
-    }, 1200);
-  };
-
-  renderStatus () {
-    const state = this.state.tab === 'voice' ? this.state.voiceState : this.state.textState;
-    return (
-      <span className={`${styles.status} ${styles[`status_${state}`]}`}>
-        <span className={styles.statusDot} />
-        <span className={styles.statusText}>{STATUS_LABELS[state]}</span>
-      </span>
-    );
-  }
 
   togglePlaying = () => {
     this.setState((state) => ({playing: !state.playing}));
@@ -375,8 +423,285 @@ class AIPanel extends React.Component {
     }, 1200);
   };
 
+  openFilePicker = () => {
+    if (this.fileInputRef.current) {
+      this.fileInputRef.current.click();
+    }
+  };
+
+  handleFileChange = (event) => {
+    const file = event.target.files && event.target.files[0];
+    // Allow selecting the same file again later
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+    if (this.state.attachment) {
+      URL.revokeObjectURL(this.state.attachment.url);
+      this.objectUrls = this.objectUrls.filter((url) => url !== this.state.attachment.url);
+    }
+    const url = URL.createObjectURL(file);
+    this.objectUrls.push(url);
+    this.setState({
+      attachment: {
+        url,
+        name: file.name
+      }
+    });
+  };
+
+  removeAttachment = () => {
+    const {attachment} = this.state;
+    if (!attachment) {
+      return;
+    }
+    URL.revokeObjectURL(attachment.url);
+    this.objectUrls = this.objectUrls.filter((url) => url !== attachment.url);
+    this.setState({attachment: null});
+  };
+
+  handleInputChange = (event) => {
+    this.setState({input: event.target.value});
+  };
+
+  handleInputKeyDown = (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      this.sendText();
+    }
+  };
+
+  sendText = () => {
+    const text = this.state.input.trim();
+    const image = this.state.attachment ? this.state.attachment.url : null;
+    if (!text && !image) {
+      return;
+    }
+    if (this.textTimer) {
+      clearTimeout(this.textTimer);
+      this.textTimer = null;
+    }
+    this.setState((state) => ({
+      input: '',
+      attachment: null,
+      textState: 'thinking',
+      textMessages: [...state.textMessages, {role: 'user', text, image}]
+    }));
+    this.textTimer = setTimeout(() => {
+      this.textTimer = null;
+      this.setState((state) => ({
+        textState: 'reply',
+        textMessages: [...state.textMessages, {
+          role: 'ai',
+          text: '收到，我按这个方向继续。'
+        }]
+      }));
+    }, 1200);
+  };
+
+  /* ------------------------------------------------------------------------------------
+   * Floating card: press a blank area and move to drag it.
+   * The header (except its buttons), the empty part of the message list and the panel
+   * padding are the drag handles.
+   * ---------------------------------------------------------------------------------- */
+
+  handleTopBarPointerDown = (event) => {
+    if (this.state.mode !== 'floating' || event.button !== 0) {
+      return;
+    }
+    // The entire top strip is a drag handle, including the switch button. Moving the pointer
+    // drags the card; a click on the switch still changes placement.
+    event.stopPropagation();
+    this.startDrag(event, false, !!event.target.closest('button'));
+  };
+
+  handlePanelPointerDown = (event) => {
+    if (this.state.mode !== 'floating' || event.button !== 0) {
+      return;
+    }
+    if (event.target.closest('[data-ai-drag="top"]')) {
+      return;
+    }
+    // The tabs are buttons, but they are also part of the drag band: a click still switches
+    // tabs, moving the pointer drags the card.
+    const inTabs = !!event.target.closest('[data-ai-drag="tabs"]');
+    if (!inTabs && event.target.closest('button, input, textarea, a, img, [role="tab"], [role="button"]')) {
+      return;
+    }
+    const onEmptyBody = event.target === this.bodyRef.current;
+    const onPadding = event.target === event.currentTarget;
+    if (!inTabs && !onEmptyBody && !onPadding) {
+      return;
+    }
+    this.startDrag(event, inTabs, false);
+  };
+
+  /**
+   * @param {PointerEvent} event
+   * @param {boolean} startedInTabs
+   * @param {boolean} startedOnSwitch
+   */
+  startDrag = (event, startedInTabs, startedOnSwitch) => {
+    const rect = this.panelRef.current.getBoundingClientRect();
+    this.dragStartedInTabs = startedInTabs;
+    this.dragStartedOnSwitch = startedOnSwitch;
+    this.dragStart = {
+      pointerX: event.clientX,
+      pointerY: event.clientY,
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height
+    };
+    this.dragActive = false;
+    this.dragMoved = false;
+    window.addEventListener('pointermove', this.handleDragMove, true);
+    window.addEventListener('pointerup', this.finishDrag, true);
+    window.addEventListener('pointercancel', this.finishDrag, true);
+  };
+
+  handleDragMove = (event) => {
+    if (!this.dragStart) {
+      return;
+    }
+    const dx = event.clientX - this.dragStart.pointerX;
+    const dy = event.clientY - this.dragStart.pointerY;
+
+    if (!this.dragActive) {
+      // A press only becomes a drag once the pointer has actually moved, so clicks on the
+      // tabs and the switch button still work. There is no long-press delay.
+      if (Math.max(Math.abs(dx), Math.abs(dy)) <= DRAG_START_DISTANCE) {
+        return;
+      }
+      this.dragActive = true;
+      this.dragMoved = true;
+      this.customFloatingPosition = true;
+      document.documentElement.classList.add('tw-ai-dragging');
+      this.setState({dragging: true});
+    }
+
+    event.preventDefault();
+    const left = Math.max(8, Math.min(
+      window.innerWidth - this.dragStart.width - 8,
+      this.dragStart.left + dx
+    ));
+    const top = Math.max(8, Math.min(
+      window.innerHeight - this.dragStart.height - 8,
+      this.dragStart.top + dy
+    ));
+    this.setState({
+      floatingLeft: left,
+      floatingBottom: window.innerHeight - (top + this.dragStart.height)
+    });
+  };
+
+  finishDrag = () => {
+    window.removeEventListener('pointermove', this.handleDragMove, true);
+    window.removeEventListener('pointerup', this.finishDrag, true);
+    window.removeEventListener('pointercancel', this.finishDrag, true);
+    if (this.dragActive) {
+      this.dragActive = false;
+      document.documentElement.classList.remove('tw-ai-dragging');
+      this.setState({dragging: false});
+    }
+    if (this.dragMoved && (this.dragStartedInTabs || this.dragStartedOnSwitch)) {
+      // A drag started on a tab or the switch button; swallow the click it produces.
+      this.suppressNextClick = true;
+      setTimeout(() => {
+        this.suppressNextClick = false;
+      }, 250);
+    }
+    this.dragStart = null;
+    this.dragActive = false;
+    this.dragMoved = false;
+    this.dragStartedInTabs = false;
+    this.dragStartedOnSwitch = false;
+  };
+
+  /* ------------------------------------------------------------------------------------
+   * Rail: drag the left edge to resize it.
+   * ---------------------------------------------------------------------------------- */
+
+  startRailResize = (event) => {
+    if (event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+
+    const startX = event.clientX;
+    const startWidth = this.state.railWidth;
+    let latestWidth = startWidth;
+    document.documentElement.classList.add('tw-ai-resizing');
+
+    const onMove = (moveEvent) => {
+      latestWidth = this.clampRailWidth(startWidth - (moveEvent.clientX - startX));
+      if (latestWidth !== this.state.railWidth) {
+        this.setState({railWidth: latestWidth});
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.documentElement.classList.remove('tw-ai-resizing');
+      this.evaluateStageSize(latestWidth);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  /* ------------------------------------------------------------------------------------
+   * Rendering
+   * ---------------------------------------------------------------------------------- */
+
+  renderStatus () {
+    const state = this.state.tab === 'voice' ? this.state.voiceState : this.state.textState;
+    return (
+      <span className={`${styles.status} ${styles[`status_${state}`]}`}>
+        <span className={styles.statusDot} />
+        <span className={styles.statusText}>{STATUS_LABELS[state]}</span>
+      </span>
+    );
+  }
+
+  renderAttachment () {
+    const {attachment} = this.state;
+    if (!attachment) {
+      return null;
+    }
+    return (
+      <div className={styles.attachment}>
+        <img className={styles.attachmentThumb} src={attachment.url} alt="" />
+        <span className={styles.attachmentName}>{attachment.name}</span>
+        <button
+          type="button"
+          className={styles.attachmentRemove}
+          onClick={this.removeAttachment}
+          aria-label="移除图片"
+        >
+          <Icon name="x" size={12} />
+        </button>
+      </div>
+    );
+  }
+
+  renderUploadButton () {
+    return (
+      <button
+        type="button"
+        className={styles.composerAction}
+        onClick={this.openFilePicker}
+        title="上传图片"
+        aria-label="上传图片"
+      >
+        <Icon name="image" size={16} />
+      </button>
+    );
+  }
+
   renderVoice () {
-    const {voiceState, adopted, playing} = this.state;
+    const {voiceState, voiceImages, adopted, playing} = this.state;
     return (
       <div className={styles.conversation}>
         {VOICE_MESSAGES.map((message, index) => (
@@ -398,6 +723,11 @@ class AIPanel extends React.Component {
             )}
             <Waveform ai={message.role === 'ai'} playing={playing && message.role === 'ai'} />
             <span className={styles.duration}>{message.duration}</span>
+          </div>
+        ))}
+        {voiceImages.map((url, index) => (
+          <div key={index} className={styles.imageMessage}>
+            <img src={url} alt="" />
           </div>
         ))}
         {voiceState === 'reply' ? (
@@ -431,13 +761,22 @@ class AIPanel extends React.Component {
     if (voiceState === 'listening') {
       return (
         <div className={styles.listeningBar}>
+          <button
+            type="button"
+            className={`${styles.micButton} ${styles.micButtonListening}`}
+            onClick={this.finishListening}
+            title="结束并发送"
+            aria-label="结束并发送"
+          >
+            <Icon name="stop" size={16} />
+          </button>
           <span className={styles.listenWave} aria-hidden="true">
             {Array.from({length: 10}, (_, index) => <i key={index} />)}
           </span>
-          <span className={styles.listeningText}>正在听…</span>
-          <button type="button" className={styles.stopButton} onClick={this.finishListening} aria-label="结束录音">
-            <Icon name="stop" size={13} />
-          </button>
+          <span className={styles.listeningCopy}>
+            <b>正在听…</b>
+            <span>再点结束并发送</span>
+          </span>
         </div>
       );
     }
@@ -454,17 +793,17 @@ class AIPanel extends React.Component {
         <button
           type="button"
           className={styles.micButton}
-          onPointerDown={this.startListening}
-          onKeyDown={this.handleMicKeyDown}
-          onKeyUp={this.handleMicKeyUp}
-          aria-label="按住说话"
+          onClick={this.toggleListening}
+          title="点击说话"
+          aria-label="点击说话"
         >
           <Icon name="mic" size={20} />
         </button>
         <span className={styles.composerCopy}>
-          <b>按住说话</b>
-          <span>松开发送</span>
+          <b>点击说话</b>
+          <span>再点一下结束并发送</span>
         </span>
+        {this.renderUploadButton()}
       </div>
     );
   }
@@ -478,7 +817,10 @@ class AIPanel extends React.Component {
             key={index}
             className={message.role === 'user' ? styles.bubbleUser : styles.bubbleAi}
           >
-            {message.text}
+            {message.image ? (
+              <img className={styles.bubbleImage} src={message.image} alt="" />
+            ) : null}
+            {message.text ? <span>{message.text}</span> : null}
           </div>
         ))}
         {textState === 'thinking' ? (
@@ -491,7 +833,7 @@ class AIPanel extends React.Component {
   }
 
   renderTextComposer () {
-    const {input} = this.state;
+    const {input, attachment} = this.state;
     return (
       <div className={styles.textComposer}>
         <input
@@ -503,11 +845,12 @@ class AIPanel extends React.Component {
           onKeyDown={this.handleInputKeyDown}
           aria-label="输入文字"
         />
+        {this.renderUploadButton()}
         <button
           type="button"
           className={styles.sendButton}
           onClick={this.sendText}
-          disabled={!input.trim()}
+          disabled={!input.trim() && !attachment}
           aria-label="发送"
         >
           <Icon name="send" size={15} />
@@ -517,38 +860,74 @@ class AIPanel extends React.Component {
   }
 
   render () {
-    const {mode, tab} = this.state;
+    if (this.props.hidden) {
+      // Rendering nothing keeps the panel's state (conversation, staged image, width) alive
+      // while the stage is in its own fullscreen mode.
+      return null;
+    }
+    const {mode, tab, dragging, floatingLeft, floatingBottom} = this.state;
     const floating = mode === 'floating';
-    const panelStyle = floating && this.state.floatingLeft !== null ? {
-      left: this.state.floatingLeft,
-      bottom: this.state.floatingBottom,
+    const panelStyle = floating && floatingLeft !== null ? {
+      left: floatingLeft,
+      bottom: floatingBottom,
       right: 'auto'
     } : undefined;
 
+    const header = (
+      <header className={styles.header}>
+        <span className={styles.avatar}><Icon name="sparkles" size={14} /></span>
+        <span className={styles.title}>南风 AI</span>
+        {this.renderStatus()}
+        <span className={styles.actions}>
+          <button
+            type="button"
+            className={styles.iconButton}
+            onClick={this.switchPlacement}
+            title={floating ? '回到侧栏' : '悬浮到舞台'}
+            aria-label={floating ? '回到侧栏' : '悬浮到舞台'}
+          >
+            <Icon name={floating ? 'rail' : 'float'} size={15} />
+          </button>
+        </span>
+      </header>
+    );
+
     return (
       <section
-        className={`${styles.panel} ${floating ? styles.floating : styles.rail}`}
+        ref={this.panelRef}
+        className={[
+          styles.panel,
+          floating ? styles.floating : styles.rail,
+          dragging ? styles.panelDragging : ''
+        ].join(' ')}
         style={panelStyle}
         aria-label="南风 AI 助手"
+        onPointerDown={floating ? this.handlePanelPointerDown : undefined}
       >
-        <header className={styles.header}>
-          <span className={styles.avatar}><Icon name="sparkles" size={14} /></span>
-          <span className={styles.title}>南风 AI</span>
-          {this.renderStatus()}
-          <span className={styles.actions}>
-            <button
-              type="button"
-              className={styles.iconButton}
-              onClick={this.switchPlacement}
-              title={floating ? '回到侧栏' : '悬浮到舞台'}
-              aria-label={floating ? '回到侧栏' : '悬浮到舞台'}
-            >
-              <Icon name={floating ? 'rail' : 'float'} size={15} />
-            </button>
-          </span>
-        </header>
+        {!floating ? (
+          <div
+            className={styles.resizeHandle}
+            onPointerDown={this.startRailResize}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整助手宽度"
+            title="拖动调整宽度"
+          />
+        ) : null}
 
-        <div className={styles.tabs} role="tablist" aria-label="对话方式">
+        {floating ? (
+          <div
+            className={styles.topBar}
+            data-ai-drag="top"
+            onPointerDown={this.handleTopBarPointerDown}
+            title="按住拖动"
+          >
+            <div className={styles.dragGrip} aria-hidden="true" />
+            {header}
+          </div>
+        ) : header}
+
+        <div className={styles.tabs} role="tablist" aria-label="对话方式" data-ai-drag="tabs">
           <button
             type="button"
             role="tab"
@@ -571,18 +950,34 @@ class AIPanel extends React.Component {
           </button>
         </div>
 
-        <div className={styles.body}>
+        <div className={styles.body} ref={this.bodyRef} data-ai-drag="body">
           {tab === 'voice' ? this.renderVoice() : this.renderText()}
         </div>
+
+        {this.renderAttachment()}
+
         {tab === 'voice' ? this.renderVoiceComposer() : this.renderTextComposer()}
+
+        <input
+          ref={this.fileInputRef}
+          className={styles.fileInput}
+          type="file"
+          accept="image/*"
+          onChange={this.handleFileChange}
+        />
       </section>
     );
   }
 }
 
 AIPanel.propTypes = {
+  hidden: PropTypes.bool,
   stageSizeMode: PropTypes.string.isRequired,
   onSetStageSize: PropTypes.func.isRequired
+};
+
+AIPanel.defaultProps = {
+  hidden: false
 };
 
 export default AIPanel;

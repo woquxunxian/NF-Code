@@ -241,13 +241,12 @@ const DesktopHOC = function (WrappedComponent) {
             securityManager={securityManager}
             {...props}
           />
-          {/* Hidden while the stage is in full screen mode, which has its own top bar. */}
-          {!isFullScreen ? (
-            <AIPanel
-              stageSizeMode={stageSizeMode}
-              onSetStageSize={onSetStageSize}
-            />
-          ) : null}
+          {/* Hides itself while the stage is in full screen mode, keeping its state. */}
+          <AIPanel
+            hidden={isFullScreen}
+            stageSizeMode={stageSizeMode}
+            onSetStageSize={onSetStageSize}
+          />
         </React.Fragment>
       );
     }

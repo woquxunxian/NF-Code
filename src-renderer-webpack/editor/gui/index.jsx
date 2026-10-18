@@ -5,6 +5,8 @@ import GUI from './gui.jsx';
 import './media-device-chooser-impl.js';
 import '../prompt/prompt.js';
 import './title-bar-color.js';
+// Must come after the GUI import so its additional translations are already merged.
+import './localization-overrides.js';
 
 const appTarget = document.getElementById('app');
 document.body.classList.add('tw-loaded');

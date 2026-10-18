@@ -20,6 +20,20 @@
   padding-right: var(--tw-ai-rail-width);
   box-sizing: border-box;
 }
+/*
+ * While the assistant is being dragged or resized the pointer can travel over any part of
+ * the editor, so the cursor and text selection are forced globally for the duration.
+ */
+:global(html.tw-ai-dragging),
+:global(html.tw-ai-dragging *) {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+:global(html.tw-ai-resizing),
+:global(html.tw-ai-resizing *) {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
 :global(#app) {
   position: absolute;
   top: 0;

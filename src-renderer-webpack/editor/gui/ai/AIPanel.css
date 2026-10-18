@@ -65,6 +65,77 @@
   align-items: center;
   gap: 7px;
   min-width: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* The floating card can be dragged by long-pressing the header. */
+.floating .header {
+  cursor: grab;
+  touch-action: none;
+}
+
+.panelDragging .header {
+  cursor: grabbing;
+}
+
+/* Full-width drag surface at the top of the floating card: grip + header. The negative
+   margins let it reach the card edges so there are no dead strips around the header. */
+.topBar {
+  position: relative;
+  flex: none;
+  margin: -12px -12px 0;
+  padding: 8px 12px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.panelDragging .topBar {
+  cursor: grabbing;
+}
+
+/* Visible handle inside the drag surface. The pointer goes through it to the top bar. */
+.dragGrip {
+  width: 34px;
+  height: 4px;
+  margin: 0 auto 6px;
+  border-radius: 2px;
+  background: var(--ai-border);
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+/* Resize handle on the left edge of the docked rail. */
+.resizeHandle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  z-index: 2;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.resizeHandle::after {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 50%;
+  width: 2px;
+  height: 24px;
+  margin-top: -12px;
+  border-radius: 1px;
+  background: var(--ai-border);
+  opacity: 0.8;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.resizeHandle:hover::after {
+  background: var(--ai-accent);
+  opacity: 1;
 }
 
 .avatar {
@@ -376,6 +447,7 @@
 }
 
 .composerCopy {
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -390,6 +462,28 @@
   font-size: 9px;
   opacity: 0.55;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composerAction {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--ai-border);
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.75;
+  cursor: pointer;
+}
+
+.composerAction:hover {
+  background: var(--ai-surface-2);
+  opacity: 1;
 }
 
 .listeningBar {
@@ -429,25 +523,27 @@
 .listenWave i:nth-child(9) { height: 70%; animation-delay: 0.64s; }
 .listenWave i:nth-child(10) { height: 35%; animation-delay: 0.72s; }
 
-.listeningText {
+.listeningCopy {
   flex: none;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.listeningCopy b {
   font-size: 11px;
   color: var(--ai-accent);
   white-space: nowrap;
 }
 
-.stopButton {
-  width: 32px;
-  height: 32px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  padding: 0;
-  border: 1px solid var(--ai-accent);
-  border-radius: 8px;
-  background: var(--ai-accent-soft);
-  color: var(--ai-accent);
-  cursor: pointer;
+.listeningCopy span {
+  font-size: 9px;
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+.micButtonListening {
+  animation: aiListenPulse 1.3s ease-in-out infinite;
 }
 
 .thinkingBar {
@@ -490,6 +586,89 @@
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.bubbleImage {
+  display: block;
+  width: 160px;
+  max-width: 100%;
+  height: 110px;
+  margin-bottom: 4px;
+  border-radius: 7px;
+  object-fit: cover;
+}
+
+.imageMessage {
+  align-self: flex-end;
+  width: 112px;
+  max-width: 100%;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid var(--ai-border);
+  border-radius: 9px;
+  background: var(--ai-surface-2);
+}
+
+.imageMessage img {
+  display: block;
+  width: 100%;
+  max-height: 90px;
+  object-fit: cover;
+}
+
+/* Staged image, shown above whichever composer is active. */
+.attachment {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 6px;
+  border: 1px solid var(--ai-border);
+  border-radius: 8px;
+  background: var(--ai-surface-2);
+}
+
+.attachmentThumb {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 6px;
+  object-fit: cover;
+  background: var(--ai-surface);
+}
+
+.attachmentName {
+  flex: 1;
+  min-width: 0;
+  font-size: 10px;
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachmentRemove {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.attachmentRemove:hover {
+  background: var(--ai-surface);
+  opacity: 1;
+}
+
+.fileInput {
+  display: none;
 }
 
 .bubbleUser {
@@ -560,6 +739,12 @@
 .sendButton:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+@keyframes aiListenPulse {
+  0% { box-shadow: 0 0 0 0 var(--ai-accent-soft); }
+  70% { box-shadow: 0 0 0 8px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
 }
 
 @keyframes aiPulse {
