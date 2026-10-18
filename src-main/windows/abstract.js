@@ -163,6 +163,63 @@ class AbstractWindow {
     return '#ffffff';
   }
 
+  /**
+   * The color the window frame starts out with, used until the renderer has reported the
+   * theme it is actually using. Matches the editor's default accent color.
+   */
+  getDefaultFrameColor () {
+    return '#ff4c4c';
+  }
+
+  /**
+   * Width of the system window buttons that are drawn over the top right corner of some
+   * windows, which whatever occupies that corner has to leave free. Zero on platforms
+   * that keep the buttons outside of the content area.
+   */
+  getWindowControlsWidth () {
+    return 0;
+  }
+
+  /**
+   * Decides how the operating system draws the window frame. Windows gets its title bar
+   * replaced by the app's own menu bar with the system window buttons drawn on top of it,
+   * macOS keeps its traffic lights, and other platforms keep the entire native frame.
+   */
+  getWindowFrameOptions () {
+    if (process.platform === 'win32') {
+      return {
+        // 'hidden' rather than frame:false - only this enables the window controls overlay
+        // that lets the buttons be drawn on top of the menu bar with our own color.
+        titleBarStyle: 'hidden',
+        titleBarOverlay: {
+          color: this.getDefaultFrameColor(),
+          symbolColor: '#ffffff',
+          height: this.getWindowControlsHeight()
+        },
+        roundedCorners: true
+      };
+    }
+
+    if (process.platform === 'darwin') {
+      return {
+        titleBarStyle: 'hiddenInset',
+        trafficLightPosition: {
+          x: 12,
+          y: 13
+        }
+      };
+    }
+
+    return {};
+  }
+
+  /**
+   * Height of the window buttons overlay, which has to line up with the editor's menu bar.
+   */
+  getWindowControlsHeight () {
+    return 48;
+  }
+
   getWindowOptions () {
     /** @type {Electron.BrowserWindowConstructorOptions} */
     const options = {};
@@ -188,13 +245,26 @@ class AbstractWindow {
 
     options.backgroundColor = this.getBackgroundColor();
 
-    // On Linux the icon doesn't get baked into the executable as it does on other platforms
-    if (process.platform === 'linux') {
-      // This path won't work in development but it will work in production
-      options.icon = path.resolve(__dirname, '../../../icon.png');
-    }
+    // Windows does not pick the icon up from the executable while running from source
+    options.icon = path.resolve(__dirname, '../../art/icon.png');
+
+    Object.assign(options, this.getWindowFrameOptions());
 
     return options;
+  }
+
+  /**
+   * Follows the editor's dark mode setting, which keeps the window frame, context menus
+   * and other native UI in the same mode as the app. Takes effect everywhere because it
+   * is a process-wide Electron setting.
+   * @param {boolean} isDark
+   */
+  setColorScheme (isDark) {
+    const {nativeTheme} = require('electron');
+    const desired = isDark ? 'dark' : 'light';
+    if (nativeTheme.themeSource !== desired) {
+      nativeTheme.themeSource = desired;
+    }
   }
 
   loadURL (url) {

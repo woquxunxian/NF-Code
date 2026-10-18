@@ -1,3 +1,25 @@
+/*
+ * Width reserved for the system window buttons, which float over the top right corner of
+ * the menu bar. Set by title-bar-color.js from the browser window's reported control
+ * area; zero on platforms that keep the native title bar.
+ */
+:root {
+  --tw-window-controls-width: 0px;
+  /*
+   * Width of the AI assistant rail. The panel uses the same variable, and the editor body
+   * reserves this space while the assistant is docked.
+   */
+  --tw-ai-rail-width: 248px;
+}
+/*
+ * While the AI assistant is docked on the right, the editor body leaves it room instead of
+ * being covered by it. Wrapped in :global because the toggling class is applied to <html>
+ * from JS and must not be hashed by css-loader.
+ */
+:global(html.tw-ai-rail-open [class*='gui_body-wrapper_']) {
+  padding-right: var(--tw-ai-rail-width);
+  box-sizing: border-box;
+}
 :global(#app) {
   position: absolute;
   top: 0;
@@ -6,6 +28,79 @@
   height: 100%;
   min-width: 1024px;
   min-height: 640px;
+}
+/*
+ * The menu bar doubles as the title bar, so the area it shares with the window buttons
+ * has to be left empty.
+ */
+:global(.menu-bar-position) {
+  padding-right: var(--tw-window-controls-width, 0px);
+  box-sizing: border-box;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/*
+ * The menu bar is the title bar, so dragging it moves the window, the way any other app
+ * behaves. It only takes effect on Windows and macOS: other platforms keep the native
+ * frame, which already provides its own title bar.
+ * The match uses a substring because the element also carries the GUI's positioning class,
+ * whose order in the class list is not guaranteed.
+ */
+:global([class*='menu-bar_menu-bar_']) {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+/*
+ * Anything clickable inside the bar has to opt back out of the drag region, otherwise it
+ * would become part of the window's drag handle and stop receiving clicks.
+ * These selectors match the class names written in scratch-gui's menu-bar.jsx and
+ * project-title-input.jsx. The names are hashed by css-loader (see webpack.config.cjs),
+ * which is why they are matched as substrings.
+ */
+:global([class*='_menu-bar-item_']),
+:global([class*='_menu-bar-button_']),
+:global([class*='_menu-bar-menu_']),
+:global([class*='_menu-item-link_']),
+:global([class*='_title-field_']) {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+/*
+ * The upstream feedback button sends users to TurboWarp's own Scratch profile, which does
+ * not apply to this app, so the whole entry is hidden. The selector matches the generated
+ * class name for scratch-gui's .feedback-link, which is the anchor wrapping the button.
+ */
+:global([class*='_feedback-link_']) {
+  display: none;
+}
+/*
+ * When the stage is maximized, scratch-gui replaces the menu bar with its own stage menu
+ * bar pinned to the top of the window. That bar has to leave the system window buttons the
+ * same space the menu bar does, otherwise the fullscreen button at its right end ends up
+ * underneath them.
+ */
+:global([class*='_stage-header-wrapper-overlay_']) {
+  padding-right: var(--tw-window-controls-width, 0px);
+  box-sizing: border-box;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+/*
+ * The stage menu bar centers a row that is as wide as the stage. Capping it keeps that row
+ * inside the space the window buttons leave behind, even when the stage fills the window.
+ */
+:global([class*='_stage-header-wrapper-overlay_'] > [class*='_stage-menu-wrapper_']) {
+  max-width: 100%;
+}
+/*
+ * The controls in the fullscreen bar are clickable, so they opt out of the drag region the
+ * same way the menu bar items do.
+ */
+:global([class*='_controls-container_']),
+:global([class*='_unselect-wrapper_']),
+:global([class*='_stage-button_']) {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 a {
   color: #25d;

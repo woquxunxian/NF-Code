@@ -1,6 +1,6 @@
-const PLATFORM_NAME = 'TurboWarp';
-const APP_NAME = 'TurboWarp Desktop';
-const PACKAGER_NAME = 'TurboWarp Packager';
+const PLATFORM_NAME = '南风编程';
+const APP_NAME = '南风编程';
+const PACKAGER_NAME = '南风编程打包器';
 
 module.exports = {
   PLATFORM_NAME,

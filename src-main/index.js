@@ -251,6 +251,11 @@ app.on('second-instance', (event, argv, workingDirectory) => {
 });
 
 app.whenReady().then(() => {
+  // Until the editor tells us which theme it is using, follow the system preference so that
+  // the window frame and native context menus are not stuck in light mode on dark desktops.
+  const {nativeTheme} = require('electron');
+  nativeTheme.themeSource = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+
   AbstractWindow.settingsChanged();
 
   migratePromise = migrate().then((shouldContinue) => {

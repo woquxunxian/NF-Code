@@ -4,6 +4,7 @@ import GUI from './gui.jsx';
 
 import './media-device-chooser-impl.js';
 import '../prompt/prompt.js';
+import './title-bar-color.js';
 
 const appTarget = document.getElementById('app');
 document.body.classList.add('tw-loaded');

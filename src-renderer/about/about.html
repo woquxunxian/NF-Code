@@ -24,20 +24,43 @@
       }
       h1 {
         margin-top: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .app-mark {
+        width: 32px;
+        height: 32px;
+        flex: none;
+      }
+      .app-mark-sparkle {
+        fill: #ff4c4c;
       }
     </style>
   </head>
   <body>
     <main>
-      <h1>TurboWarp Desktop <span class="version"></span></h1>
+      <h1>
+        <svg class="app-mark" viewBox="0 0 1024 1024" aria-hidden="true">
+          <g class="app-mark-sparkle">
+            <g transform="translate(128,128) scale(32)">
+              <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>
+            </g>
+            <g transform="translate(212,524) scale(12)">
+              <circle cx="4" cy="20" r="2"/>
+            </g>
+          </g>
+        </svg>
+        南风编程 <span class="version"></span>
+      </h1>
       <p class="more-version"></p>
       <script>
         var info = AboutPreload.getInfo();
         document.querySelector('.version').textContent = info.version;
         document.querySelector('.more-version').textContent = `(Debug info: Electron ${info.electron}, Platform ${info.platform} ${info.arch}, Distribution ${info.dist})`;
       </script>
-      <p>TurboWarp is a better offline editor for Scratch 3. Learn more at <a href="https://desktop.turbowarp.org/">https://desktop.turbowarp.org/</a>.</p>
-      <p>TurboWarp Desktop is licensed under the GNU General Public License v3.0. The source code is published <a href="https://github.com/TurboWarp/" target="_blank" rel="noreferrer">on GitHub</a>. You can read the license below:</p>
+      <p>南风编程是一个面向少儿图形化编程的智能体编辑器。</p>
+      <p>南风编程基于 TurboWarp Desktop 与 Scratch 开发，依据 GNU General Public License v3.0 授权。源码发布在 <a href="https://github.com/woquxunxian/NF-Code" target="_blank" rel="noreferrer">GitHub</a> 上。完整的授权条款如下：</p>
       <pre>
                     GNU GENERAL PUBLIC LICENSE
                         Version 3, 29 June 2007

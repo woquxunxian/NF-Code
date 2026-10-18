@@ -11,6 +11,13 @@ dist-library-files
 dist-extensions
 src-renderer/packager/standalone.html
 
+# Icon generation writes its progress here because Electron cannot print to the console
+# on Windows
+icon-generation.log
+
+# Local tooling
+.zcode/
+
 # Debian release scripts create files that shouldn't be committed
 deb
 

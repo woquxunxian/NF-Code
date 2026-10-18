@@ -4,10 +4,23 @@
 
 const {app, dialog} = require('electron');
 
-const APP_NAME = 'TurboWarp Desktop';
+const APP_NAME = '南风编程';
 const stringifyError = (error) => (error && error.stack) ? error.stack : error;
 
-try {
+if (process.env.TW_GENERATE_ICONS) {
+  // Icon generation only needs an Electron main process; scripts/generate-icons.cjs starts
+  // this file with the variable set. See that file for the details.
+  const {generate} = require('../scripts/generate-icons.cjs');
+  app.whenReady()
+    .then(generate)
+    .then(() => {
+      app.exit(0);
+    })
+    .catch((error) => {
+      console.error('Error generating icons:', stringifyError(error));
+      app.exit(1);
+    });
+} else try {
   process.on('unhandledRejection', (error) => {
     console.error('Error in promise:', error);
     app.whenReady().then(() => {

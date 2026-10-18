@@ -21,6 +21,9 @@ import {
 } from 'scratch-gui/src/reducers/tw';
 import {WrappedFileHandle} from './filesystem-api.js';
 import {setStrings} from '../prompt/prompt.js';
+import {setStageFullscreen} from './title-bar-color.js';
+import {setStageSize} from 'scratch-gui/src/reducers/stage-size';
+import AIPanel from './ai/AIPanel.jsx';
 
 let mountedOnce = false;
 
@@ -101,6 +104,10 @@ const DesktopHOC = function (WrappedComponent) {
       }
     }
     componentDidMount () {
+      // The top bar is replaced by scratch-gui's stage menu bar while the stage is
+      // maximized, and the window frame follows whichever bar is showing.
+      setStageFullscreen(this.props.isFullScreen);
+
       EditorPreload.setExportForPackager(() => this.props.vm.saveProjectSb3('arraybuffer')
         .then((buffer) => ({
           name: this.state.title,
@@ -174,6 +181,7 @@ const DesktopHOC = function (WrappedComponent) {
 
       if (this.props.isFullScreen !== prevProps.isFullScreen) {
         EditorPreload.setIsFullScreen(this.props.isFullScreen);
+        setStageFullscreen(this.props.isFullScreen);
       }
     }
     handleUpdateProjectTitle (newTitle) {
@@ -188,6 +196,9 @@ const DesktopHOC = function (WrappedComponent) {
         projectChanged,
         fileHandle,
         reduxUsername,
+        isFullScreen,
+        stageSizeMode,
+        onSetStageSize,
         onFetchedInitialProjectData,
         onHasInitialProject,
         onLoadedProject,
@@ -201,34 +212,43 @@ const DesktopHOC = function (WrappedComponent) {
         ...props
       } = this.props;
       return (
-        <WrappedComponent
-          projectTitle={this.state.title}
-          onUpdateProjectTitle={this.handleUpdateProjectTitle}
-          onClickAddonSettings={handleClickAddonSettings}
-          onClickNewWindow={handleClickNewWindow}
-          onClickPackager={handleClickPackager}
-          onClickAbout={[
-            {
-              title: this.messages['in-app-about.desktop-settings'],
-              onClick: handleClickDesktopSettings
-            },
-            {
-              title: this.messages['in-app-about.privacy'],
-              onClick: handleClickPrivacy
-            },
-            {
-              title: this.messages['in-app-about.about'],
-              onClick: handleClickAbout
-            },
-            {
-              title: this.messages['in-app-about.source-code'],
-              onClick: handleClickSourceCode
-            },
-          ]}
-          onClickDesktopSettings={handleClickDesktopSettings}
-          securityManager={securityManager}
-          {...props}
-        />
+        <React.Fragment>
+          <WrappedComponent
+            projectTitle={this.state.title}
+            onUpdateProjectTitle={this.handleUpdateProjectTitle}
+            onClickAddonSettings={handleClickAddonSettings}
+            onClickNewWindow={handleClickNewWindow}
+            onClickPackager={handleClickPackager}
+            onClickAbout={[
+              {
+                title: this.messages['in-app-about.desktop-settings'],
+                onClick: handleClickDesktopSettings
+              },
+              {
+                title: this.messages['in-app-about.privacy'],
+                onClick: handleClickPrivacy
+              },
+              {
+                title: this.messages['in-app-about.about'],
+                onClick: handleClickAbout
+              },
+              {
+                title: this.messages['in-app-about.source-code'],
+                onClick: handleClickSourceCode
+              },
+            ]}
+            onClickDesktopSettings={handleClickDesktopSettings}
+            securityManager={securityManager}
+            {...props}
+          />
+          {/* Hidden while the stage is in full screen mode, which has its own top bar. */}
+          {!isFullScreen ? (
+            <AIPanel
+              stageSizeMode={stageSizeMode}
+              onSetStageSize={onSetStageSize}
+            />
+          ) : null}
+        </React.Fragment>
       );
     }
   }
@@ -241,6 +261,8 @@ const DesktopHOC = function (WrappedComponent) {
       id: PropTypes.string.isRequired
     }),
     isFullScreen: PropTypes.bool.isRequired,
+    stageSizeMode: PropTypes.string.isRequired,
+    onSetStageSize: PropTypes.func.isRequired,
     reduxUsername: PropTypes.string.isRequired,
     onFetchedInitialProjectData: PropTypes.func.isRequired,
     onHasInitialProject: PropTypes.func.isRequired,
@@ -260,6 +282,7 @@ const DesktopHOC = function (WrappedComponent) {
     locale: state.locales.locale,
     loadingState: state.scratchGui.projectState.loadingState,
     isFullScreen: state.scratchGui.mode.isFullScreen,
+    stageSizeMode: state.scratchGui.stageSize.stageSize,
     projectChanged: state.scratchGui.projectChanged,
     fileHandle: state.scratchGui.tw.fileHandle,
     reduxUsername: state.scratchGui.tw.username,
@@ -282,6 +305,7 @@ const DesktopHOC = function (WrappedComponent) {
     onRequestNewProject: () => dispatch(requestNewProject(false)),
     onSetFileHandle: fileHandle => dispatch(setFileHandle(fileHandle)),
     onSetReduxUsername: username => dispatch(setUsername(username)),
+    onSetStageSize: size => dispatch(setStageSize(size)),
     onShowErrorModal: error => {
       dispatch(setProjectError(error));
       dispatch(openInvalidProjectModal());

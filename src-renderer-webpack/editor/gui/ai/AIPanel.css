@@ -1,0 +1,589 @@
+/*
+ * AI assistant panel.
+ *
+ * Colors come from the editor theme so the panel follows light/dark mode and the accent
+ * color without a separate theme system:
+ *   --ui-white / --ui-secondary / --ui-black-transparent / --text-primary / --looks-secondary
+ */
+
+.panel {
+  --ai-accent: var(--looks-secondary, #ff4c4c);
+  --ai-accent-soft: var(--looks-light-transparent, rgba(255, 76, 76, 0.15));
+  --ai-surface: var(--ui-white, #ffffff);
+  --ai-surface-2: var(--ui-secondary, #f4f6fb);
+  --ai-border: var(--ui-black-transparent, rgba(0, 0, 0, 0.15));
+  --ai-text: var(--text-primary, #575e75);
+
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: var(--ai-surface);
+  color: var(--ai-text);
+  font-family: "Helvetica Neue", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.panel *,
+.panel *::before,
+.panel *::after {
+  box-sizing: border-box;
+}
+
+/* Docked on the right edge. gui.css reserves the same width from the editor body. */
+.rail {
+  position: fixed;
+  top: 48px;
+  right: 0;
+  bottom: 0;
+  width: var(--tw-ai-rail-width, 248px);
+  z-index: 485;
+  border-left: 1px solid var(--ai-border);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.08);
+}
+
+/* Floating over the bottom right corner of the stage. The position is computed in JS. */
+.floating {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  width: 300px;
+  max-height: calc(100vh - 120px);
+  z-index: 485;
+  border: 1px solid var(--ai-border);
+  border-radius: 12px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.22);
+}
+
+.header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.avatar {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ai-accent);
+  color: #ffffff;
+}
+
+.title {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 10px;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: #4cbf56;
+}
+
+.status_listening .statusDot {
+  background: var(--ai-accent);
+  animation: aiBlink 1s ease-in-out infinite;
+}
+
+.status_thinking .statusDot {
+  background: #ffab19;
+}
+
+.status_reply .statusDot {
+  background: #4cbf56;
+}
+
+.statusText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.iconButton {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: var(--ai-surface-2);
+  opacity: 1;
+}
+
+.tabs {
+  flex: none;
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--ai-surface-2);
+}
+
+.tab {
+  flex: 1;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.65;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.tab:hover {
+  opacity: 1;
+}
+
+.tabActive {
+  background: var(--ai-accent-soft);
+  color: var(--ai-accent);
+  opacity: 1;
+  font-weight: 600;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.message {
+  min-height: 32px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--ai-surface-2);
+}
+
+.messageAi {
+  background: var(--ai-surface-2);
+}
+
+.playButton {
+  width: 25px;
+  height: 25px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ai-accent);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.playButton:hover {
+  filter: brightness(1.06);
+}
+
+.aiMark {
+  width: 25px;
+  height: 25px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--ai-accent-soft);
+  color: var(--ai-accent);
+}
+
+.wave {
+  flex: 1;
+  min-width: 0;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.wave i {
+  display: block;
+  width: 2.5px;
+  flex: none;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.35;
+}
+
+.wave i:nth-child(1) { height: 25%; }
+.wave i:nth-child(2) { height: 55%; }
+.wave i:nth-child(3) { height: 85%; }
+.wave i:nth-child(4) { height: 40%; }
+.wave i:nth-child(5) { height: 70%; }
+.wave i:nth-child(6) { height: 100%; }
+.wave i:nth-child(7) { height: 45%; }
+.wave i:nth-child(8) { height: 75%; }
+.wave i:nth-child(9) { height: 30%; }
+.wave i:nth-child(10) { height: 60%; }
+.wave i:nth-child(11) { height: 90%; }
+.wave i:nth-child(12) { height: 35%; }
+
+.waveAi i {
+  background: var(--ai-accent);
+  opacity: 0.65;
+}
+
+.wavePlaying i {
+  animation: aiPulse 0.9s ease-in-out infinite;
+}
+
+.wavePlaying i:nth-child(2n) {
+  animation-delay: 0.15s;
+}
+
+.wavePlaying i:nth-child(3n) {
+  animation-delay: 0.3s;
+}
+
+.duration {
+  flex: none;
+  font-size: 10px;
+  opacity: 0.55;
+}
+
+.replyMessage {
+  animation: aiReplyIn 0.25s ease-out;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  flex: none;
+}
+
+.chip {
+  height: 23px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border: 1px solid var(--ai-border);
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.75;
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: var(--ai-surface-2);
+  opacity: 1;
+}
+
+.chipActive {
+  border-color: var(--ai-accent);
+  background: var(--ai-accent-soft);
+  color: var(--ai-accent);
+  opacity: 1;
+}
+
+.voiceComposer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ai-border);
+}
+
+.micButton {
+  width: 44px;
+  height: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ai-accent);
+  color: #ffffff;
+  cursor: pointer;
+  box-shadow: 0 4px 12px var(--ai-accent-soft);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.micButton:hover {
+  filter: brightness(1.06);
+}
+
+.micButton:active {
+  transform: scale(0.96);
+}
+
+.composerCopy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.composerCopy b {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.composerCopy span {
+  font-size: 9px;
+  opacity: 0.55;
+  white-space: nowrap;
+}
+
+.listeningBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ai-border);
+}
+
+.listenWave {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.listenWave i {
+  width: 3px;
+  flex: none;
+  border-radius: 2px;
+  background: var(--ai-accent);
+  animation: aiPulse 0.9s ease-in-out infinite;
+}
+
+.listenWave i:nth-child(1) { height: 30%; animation-delay: 0s; }
+.listenWave i:nth-child(2) { height: 65%; animation-delay: 0.08s; }
+.listenWave i:nth-child(3) { height: 95%; animation-delay: 0.16s; }
+.listenWave i:nth-child(4) { height: 45%; animation-delay: 0.24s; }
+.listenWave i:nth-child(5) { height: 80%; animation-delay: 0.32s; }
+.listenWave i:nth-child(6) { height: 55%; animation-delay: 0.4s; }
+.listenWave i:nth-child(7) { height: 90%; animation-delay: 0.48s; }
+.listenWave i:nth-child(8) { height: 40%; animation-delay: 0.56s; }
+.listenWave i:nth-child(9) { height: 70%; animation-delay: 0.64s; }
+.listenWave i:nth-child(10) { height: 35%; animation-delay: 0.72s; }
+
+.listeningText {
+  flex: none;
+  font-size: 11px;
+  color: var(--ai-accent);
+  white-space: nowrap;
+}
+
+.stopButton {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--ai-accent);
+  border-radius: 8px;
+  background: var(--ai-accent-soft);
+  color: var(--ai-accent);
+  cursor: pointer;
+}
+
+.thinkingBar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ai-border);
+  font-size: 11px;
+  opacity: 0.75;
+}
+
+.dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ai-accent);
+  animation: aiBounce 1s infinite ease-in-out;
+}
+
+.dots i:nth-child(2) { animation-delay: 0.15s; }
+.dots i:nth-child(3) { animation-delay: 0.3s; }
+
+.textConversation {
+  gap: 6px;
+}
+
+.bubbleUser,
+.bubbleAi {
+  max-width: 88%;
+  padding: 6px 9px;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubbleUser {
+  align-self: flex-end;
+  border-radius: 10px 10px 3px 10px;
+  background: var(--ai-accent-soft);
+}
+
+.bubbleAi {
+  align-self: flex-start;
+  border-radius: 10px 10px 10px 3px;
+  background: var(--ai-surface-2);
+}
+
+.thinkingBubble {
+  align-self: flex-start;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--ai-surface-2);
+}
+
+.textComposer {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ai-border);
+}
+
+.textInput {
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 9px;
+  border: 1px solid var(--ai-border);
+  border-radius: 8px;
+  background: var(--ai-surface-2);
+  color: inherit;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.textInput::placeholder {
+  color: inherit;
+  opacity: 0.45;
+}
+
+.textInput:focus {
+  outline: none;
+  border-color: var(--ai-accent);
+}
+
+.sendButton {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: var(--ai-accent);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.sendButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@keyframes aiPulse {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes aiBounce {
+  0%, 100% { transform: translateY(0); opacity: 0.5; }
+  50% { transform: translateY(-3px); opacity: 1; }
+}
+
+@keyframes aiBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@keyframes aiReplyIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel * {
+    animation: none !important;
+  }
+}

@@ -25,6 +25,10 @@ const TYPE_URL = 'url';
 const TYPE_SCRATCH = 'scratch';
 const TYPE_SAMPLE = 'sample';
 
+// Colors reported by the renderer end up in native APIs and headers, so they are only
+// accepted if they are a plain CSS color and nothing else.
+const isCSSColor = (value) => /^(#[0-9a-f]{3,8}|rgba?\(\s*[\d\s.,%]+\)|hsla?\(\s*[\d\s.,%deg]+\))$/i.test(value);
+
 class OpenedFile {
   constructor (type, path) {
     /** @type {TYPE_FILE|TYPE_URL|TYPE_SCRATCH|TYPE_SAMPLE} */
@@ -171,7 +175,9 @@ const getUnsafePaths = () => {
       app: APP_NAME,
     },
 
-    // TurboWarp Desktop defaults
+    // Upstream TurboWarp Desktop defaults. These names are kept on purpose: projects saved
+    // in these folders would still be lost the same way, and the userData folder still
+    // carries this name.
     {
       path: path.join(appData, 'turbowarp-desktop'),
       app: 'TurboWarp Desktop'
@@ -572,8 +578,76 @@ class EditorWindow extends ProjectRunningWindow {
       this.isInEditorFullScreen = !!isFullScreen;
     });
 
+    // How much of the menu bar the system window buttons cover. In fullscreen mode they
+    // disappear, hence the resize listener below re-sending it.
+    this.ipc.handle('get-window-controls-width', () => this.getWindowControlsWidth());
+
+    // The renderer reports the colors of the theme it applied so that the window frame and
+    // the window buttons drawn over the menu bar can match it. It calls this again every
+    // time the theme changes, which is why nothing here may recreate the window.
+    this.ipc.on('set-title-bar-color', (event, {color, isDark, height} = {}) => {
+      this.applyTitleBarTheme(color, isDark, height);
+    });
+
+    // The buttons are hidden while fullscreen, which frees the space the renderer had
+    // reserved for them.
+    this.window.on('enter-full-screen', () => this.sendWindowControlsWidth());
+    this.window.on('leave-full-screen', () => this.sendWindowControlsWidth());
+
     this.loadURL('tw-editor://./gui/gui.html');
     this.show();
+  }
+
+  sendWindowControlsWidth () {
+    if (!this.window.isDestroyed()) {
+      this.window.webContents.send('window-controls-width', this.window.isFullScreen() ? 0 : this.getWindowControlsWidth());
+    }
+  }
+
+  /**
+   * @param {unknown} color CSS color reported by the renderer
+   * @param {unknown} isDark
+   * @param {unknown} height Height of the bar the buttons sit on, in CSS pixels
+   */
+  applyTitleBarTheme (color, isDark, height) {
+    // Everything here comes from the renderer process, so only the shape we expect is used
+    const backgroundColor = (typeof color === 'string' && isCSSColor(color))
+      ? color
+      : this.getDefaultFrameColor();
+    const dark = isDark === true;
+    const overlayHeight = (typeof height === 'number' && height >= 20 && height <= 80)
+      ? Math.round(height)
+      : this.getWindowControlsHeight();
+
+    this.setColorScheme(dark);
+    this.window.setBackgroundColor(backgroundColor);
+
+    if (typeof this.window.setTitleBarOverlay === 'function' && process.platform === 'win32') {
+      this.window.setTitleBarOverlay({
+        color: backgroundColor,
+        symbolColor: dark ? '#ffffff' : '#000000',
+        height: overlayHeight
+      });
+    }
+  }
+
+  /**
+   * How much of the top right corner the system window buttons occupy. Only the editor has
+   * the menu bar they overlap, so only it cares.
+   * @returns {number} device independent pixels
+   */
+  getWindowControlsWidth () {
+    if (process.platform === 'win32' && typeof this.window.getWindowControlsOverlayState === 'function') {
+      try {
+        const {width} = this.window.getWindowControlsOverlayState().titlebarAreaRect;
+        if (width > 0) {
+          return width;
+        }
+      } catch (e) {
+        // Fall through to the default compiled into Electron for this platform
+      }
+    }
+    return process.platform === 'win32' ? 140 : 0;
   }
 
   getPreload () {

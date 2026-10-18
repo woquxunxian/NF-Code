@@ -21,7 +21,20 @@ contextBridge.exposeInMainWorld('EditorPreload', {
   setExportForPackager: (callback) => {
     exportForPackager = callback;
   },
-  setIsFullScreen: (isFullScreen) => ipcRenderer.invoke('set-is-full-screen', isFullScreen)
+  setIsFullScreen: (isFullScreen) => ipcRenderer.invoke('set-is-full-screen', isFullScreen),
+  getWindowControlsWidth: () => ipcRenderer.invoke('get-window-controls-width'),
+  // Not awaited: the renderer calls this again every time the theme changes
+  setTitleBarColor: (color, isDark, height) => ipcRenderer.send('set-title-bar-color', {
+    color,
+    isDark,
+    height
+  })
+});
+
+ipcRenderer.on('window-controls-width', (event, width) => {
+  window.dispatchEvent(new CustomEvent('tw-window-controls-width', {
+    detail: width
+  }));
 });
 
 let exportForPackager = () => Promise.reject(new Error('exportForPackager missing'));

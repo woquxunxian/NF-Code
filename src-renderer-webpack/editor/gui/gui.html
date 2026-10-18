@@ -12,6 +12,7 @@
         top: 0;
         left: 0;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
         text-align: center;
@@ -26,13 +27,30 @@
         background-color: #333;
         color: white;
       }
+      /* The mark reuses the geometry from art/icon.svg. It is inlined rather than loaded
+         from a file so that it also renders before any script runs. */
+      .splash-mark {
+        width: 112px;
+        height: 112px;
+        margin-bottom: 24px;
+      }
+      .splash-mark-sparkle {
+        fill: white;
+      }
+      .splash-title {
+        margin: 0 0 32px;
+        font-size: 20px;
+        font-weight: 500;
+        letter-spacing: 0.06em;
+        opacity: 0.95;
+      }
       .splash-spinner:after {
         content: " ";
         display: block;
-        width: 64px;
-        height: 64px;
+        width: 40px;
+        height: 40px;
         border-radius: 50%;
-        border: 6px solid;
+        border: 4px solid;
         border-color: currentColor transparent currentColor transparent;
         animation: splash-spinner 1.2s linear infinite;
       }
@@ -44,6 +62,19 @@
   </head>
   <body>
     <div class="splash-screen" id="spash-waiting-for-js" hidden>
+      <div class="splash-mark">
+        <svg viewBox="0 0 1024 1024" width="112" height="112" aria-hidden="true">
+          <g class="splash-mark-sparkle">
+            <g transform="translate(128,128) scale(32)">
+              <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>
+            </g>
+            <g transform="translate(212,524) scale(12)">
+              <circle cx="4" cy="20" r="2"/>
+            </g>
+          </g>
+        </svg>
+      </div>
+      <p class="splash-title">南风编程</p>
       <div class="splash-spinner"></div>
     </div>
 
